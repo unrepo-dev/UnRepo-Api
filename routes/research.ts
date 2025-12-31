@@ -153,7 +153,7 @@ router.post('/', async (req: Request, res: Response) => {
           updatedAt: repoData.updatedAt,
         },
         languages,
-        fileTree: fileTree.slice(0, 100), // Limit to 100 files
+        fileTree: Array.isArray(fileTree) ? fileTree.slice(0, 100) : [], // Limit to 100 files
         files: sampleFiles,
         analysis: analysis || 'AI analysis not available',
       },

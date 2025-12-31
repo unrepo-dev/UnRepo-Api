@@ -41,13 +41,13 @@ export class GitHubService {
       return {
         owner: data.owner.login,
         name: data.name,
-        fullName: data.full_name,
         branch: data.default_branch,
         url: data.html_url,
-        description: data.description || undefined,
-        language: data.language || undefined,
+        description: data.description || null,
+        language: data.language || null,
         stars: data.stargazers_count,
         forks: data.forks_count,
+        updatedAt: data.updated_at,
       };
     } catch (error: any) {
       if (error.status === 404) {
@@ -69,7 +69,6 @@ export class GitHubService {
 
       // Build tree structure
       const root: FileNode = {
-        name: repo,
         path: '',
         type: 'directory',
         children: [],
@@ -89,7 +88,6 @@ export class GitHubService {
         const parentPath = parts.slice(0, -1).join('/');
 
         const node: FileNode = {
-          name,
           path: item.path,
           type: item.type === 'tree' ? 'directory' : 'file',
           size: item.size,

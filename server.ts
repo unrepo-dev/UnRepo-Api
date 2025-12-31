@@ -287,7 +287,7 @@ app.get('/api/keys/usage', authenticate, async (req: AuthRequest, res: Response)
     const usage = keys.map(key => ({
       type: key.type,
       usageCount: key.usageCount,
-      lastUsed: key.lastUsed
+      lastUsed: key.lastUsedAt
     }));
 
     res.json({
