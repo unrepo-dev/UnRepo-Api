@@ -2,6 +2,8 @@
 
 <div align="center">
 
+![UnRepo API Banner](./public/IMG_1359.JPG)
+
 **Standalone Express.js REST API for AI-powered GitHub repository analysis and intelligent chatbot**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
