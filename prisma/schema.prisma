@@ -1,0 +1,186 @@
+// UnRepo Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - stores both Solana wallet and GitHub authenticated users
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  walletAddress String?   @unique // Solana wallet address
+  githubId      String?   @unique
+  githubUsername String?
+  name          String?
+  avatar        String?
+  authMethod    AuthMethod // SOLANA or GITHUB
+  
+  // Token holder verification
+  isTokenHolder Boolean   @default(false)
+  tokenBalance  Float?
+  lastTokenCheck DateTime?
+  paymentVerified Boolean @default(false)
+  
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLogin     DateTime?
+  
+  // Relations
+  sessions      Session[]
+  apiKeys       ApiKey[]
+  chatMessages  ChatMessage[]
+  repositories  RepositoryAnalysis[]
+  
+  @@index([walletAddress])
+  @@index([githubId])
+  @@index([email])
+}
+
+enum AuthMethod {
+  SOLANA
+  GITHUB
+}
+
+// Session management
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessionToken String   @unique
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  
+  @@index([userId])
+  @@index([sessionToken])
+}
+
+// API Keys for token holders
+model ApiKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key         String   @unique
+  name        String?
+  type        ApiKeyType
+  
+  // Usage tracking
+  usageCount  Int      @default(0)
+  lastUsedAt  DateTime?
+  rateLimit   Int      @default(100) // requests per hour
+  
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  
+  // Relations
+  usageLogs   ApiUsage[]
+  
+  @@index([userId])
+  @@index([key])
+}
+
+// API Usage tracking
+model ApiUsage {
+  id          String   @id @default(cuid())
+  userId      String
+  apiKeyId    String
+  apiKey      ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  
+  endpoint    String
+  method      String
+  requestData String?  @db.Text // JSON
+  responseStatus Int?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId, createdAt])
+  @@index([apiKeyId])
+}
+
+enum ApiKeyType {
+  RESEARCH    // For repository analysis API
+  CHATBOT     // For chatbot integration API
+}
+
+// GitHub repository analysis cache
+model RepositoryAnalysis {
+  id              String   @id @default(cuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  repoUrl         String
+  repoOwner       String
+  repoName        String
+  repoBranch      String   @default("main")
+  
+  // Analysis results
+  codeQuality     Float?   // 0-100 score
+  rugPotential    Float?   // 0-100 risk score
+  aiGenerated     Float?   // 0-100 percentage
+  sustainability  String?  // JSON data
+  
+  // Metadata
+  totalFiles      Int?
+  totalLines      Int?
+  languages       String?  // JSON array
+  structure       String?  // JSON tree structure
+  
+  analyzedAt      DateTime @default(now())
+  expiresAt       DateTime // Cache expiration
+  
+  @@unique([repoOwner, repoName, repoBranch])
+  @@index([userId])
+  @@index([repoUrl])
+}
+
+// Chat messages for tracking and limits
+model ChatMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  sessionId   String   // Chat session identifier
+  role        String   // 'user' or 'assistant'
+  content     String   @db.Text
+  repoContext String?  // Associated repository
+  
+  tokens      Int?     // Token count for AI API
+  model       String?  // claude-3 / gpt-4, etc.
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId, sessionId])
+  @@index([userId, createdAt])
+}
+
+// Payment verification records
+model Payment {
+  id              String   @id @default(cuid())
+  userId          String
+  walletAddress   String
+  
+  amount          Float    // 0.01 USDC
+  currency        String   @default("USDC")
+  transactionHash String   @unique
+  
+  status          PaymentStatus @default(PENDING)
+  verifiedAt      DateTime?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([walletAddress])
+  @@index([transactionHash])
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}

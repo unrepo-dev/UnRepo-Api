@@ -1,0 +1,327 @@
+import 'dotenv/config';
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import session from 'express-session';
+import jwt from 'jsonwebtoken';
+import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
+
+const app = express();
+const prisma = new PrismaClient();
+const PORT = process.env.PORT || 4000;
+const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'your-secret-key';
+
+// Middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
+
+app.use(express.json());
+app.use(session({
+  secret: JWT_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Auth middleware
+interface AuthRequest extends Request {
+  userId?: string;
+  user?: any;
+}
+
+async function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const token = authHeader.substring(7);
+    
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as any;
+      req.userId = decoded.userId;
+      
+      // Fetch user from database
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId }
+      });
+
+      if (!user) {
+        return res.status(401).json({ error: 'User not found' });
+      }
+
+      req.user = user;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+  } catch (error) {
+    return res.status(500).json({ error: 'Authentication error' });
+  }
+}
+
+// Generate API key helper
+function generateApiKey(type: 'RESEARCH' | 'CHATBOT'): string {
+  const prefix = type === 'RESEARCH' ? 'unrepo_research_' : 'unrepo_chatbot_';
+  const randomBytes = crypto.randomBytes(32).toString('hex');
+  return prefix + randomBytes;
+}
+
+// ===== ROUTES =====
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// GitHub OAuth login
+app.post('/auth/github/login', async (req: Request, res: Response) => {
+  try {
+    const { githubId, githubUsername, name, email, avatar } = req.body;
+
+    if (!githubId || !githubUsername) {
+      return res.status(400).json({ error: 'GitHub ID and username are required' });
+    }
+
+    // Upsert user
+    const user = await prisma.user.upsert({
+      where: { githubId: githubId.toString() },
+      update: {
+        githubUsername,
+        name: name || githubUsername,
+        avatar,
+        email,
+        lastLogin: new Date(),
+      },
+      create: {
+        githubId: githubId.toString(),
+        githubUsername,
+        name: name || githubUsername,
+        avatar,
+        email,
+        authMethod: 'GITHUB',
+      },
+    });
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, githubId: user.githubId },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        githubUsername: user.githubUsername,
+        isTokenHolder: user.isTokenHolder,
+        paymentVerified: user.paymentVerified
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Get current user session
+app.get('/auth/session', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      user: req.user
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Session fetch failed' });
+  }
+});
+
+// Create API Key (No auth required for easy testing)
+app.post('/api/keys/generate', async (req: Request, res: Response) => {
+  try {
+    const { type, name, email } = req.body;
+
+    if (!type || !['RESEARCH', 'CHATBOT'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid API key type. Must be RESEARCH or CHATBOT' });
+    }
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({ error: 'API name is required' });
+    }
+
+    // Get or create user by email (defaults to test user if no email provided)
+    const userEmail = email || 'test@unrepo.dev';
+    
+    let user = await prisma.user.findFirst({
+      where: { email: userEmail }
+    });
+
+    if (!user) {
+      // Create new user if doesn't exist
+      user = await prisma.user.create({
+        data: {
+          email: userEmail,
+          name: name,
+          authMethod: 'GITHUB',
+          githubId: `temp_${Date.now()}`,
+          githubUsername: userEmail.split('@')[0],
+        }
+      });
+    }
+
+    // Check if user already has this type of API key
+    const existingKey = await prisma.apiKey.findFirst({
+      where: {
+        userId: user.id,
+        type,
+        isActive: true,
+      },
+    });
+
+    if (existingKey) {
+      return res.json({
+        success: true,
+        message: 'API key already exists',
+        data: {
+          apiKey: existingKey.key,
+          type: existingKey.type,
+          name: existingKey.name,
+          createdAt: existingKey.createdAt,
+          isActive: existingKey.isActive,
+          usageCount: existingKey.usageCount
+        }
+      });
+    }
+
+    // Generate new API key
+    const apiKey = generateApiKey(type as 'RESEARCH' | 'CHATBOT');
+
+    // Save to database
+    const newKey = await prisma.apiKey.create({
+      data: {
+        userId: user.id,
+        key: apiKey,
+        type,
+        name: name.trim(),
+        isActive: true,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'API key created successfully',
+      data: {
+        apiKey: newKey.key,
+        type: newKey.type,
+        name: newKey.name,
+        createdAt: newKey.createdAt,
+        isActive: newKey.isActive,
+        usageCount: newKey.usageCount
+      }
+    });
+  } catch (error) {
+    console.error('API key generation error:', error);
+    res.status(500).json({ error: 'Failed to generate API key' });
+  }
+});
+
+// Get all API keys for user
+app.get('/api/keys', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: {
+        userId: req.userId!,
+        isActive: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const user = req.user;
+    const isPremium = user.paymentVerified || user.isTokenHolder;
+
+    const keysWithTier = keys.map(key => ({
+      id: key.id,
+      name: key.name,
+      key: key.key,
+      type: key.type,
+      usageCount: key.usageCount,
+      createdAt: key.createdAt,
+      isActive: key.isActive,
+      isPremium,
+      remainingCalls: isPremium ? null : Math.max(0, 5 - key.usageCount)
+    }));
+
+    res.json({
+      success: true,
+      data: keysWithTier
+    });
+  } catch (error) {
+    console.error('Fetch keys error:', error);
+    res.status(500).json({ error: 'Failed to fetch API keys' });
+  }
+});
+
+// Get API key usage
+app.get('/api/keys/usage', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: {
+        userId: req.userId!,
+        isActive: true
+      }
+    });
+
+    const usage = keys.map(key => ({
+      type: key.type,
+      usageCount: key.usageCount,
+      lastUsed: key.lastUsed
+    }));
+
+    res.json({
+      success: true,
+      data: usage
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch usage' });
+  }
+});
+
+// Import API route handlers
+import chatbotRouter from './routes/chatbot.js';
+import researchRouter from './routes/research.js';
+
+app.use('/api/v1/chatbot', chatbotRouter);
+app.use('/api/v1/research', researchRouter);
+
+// Error handling middleware
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 UnRepo API Server running on port ${PORT}`);
+  console.log(`📍 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  await prisma.$disconnect();
+  process.exit(0);
+});
