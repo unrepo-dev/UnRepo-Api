@@ -41,13 +41,13 @@ export class GitHubService {
       return {
         owner: data.owner.login,
         name: data.name,
+        fullName: data.full_name,
         branch: data.default_branch,
         url: data.html_url,
-        description: data.description || null,
-        language: data.language || null,
+        description: data.description || undefined,
+        language: data.language || undefined,
         stars: data.stargazers_count,
         forks: data.forks_count,
-        updatedAt: data.updated_at,
       };
     } catch (error: any) {
       if (error.status === 404) {

@@ -238,18 +238,35 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
   }
 });
 
-// Get all API keys for user
-app.get('/api/keys', authenticate, async (req: AuthRequest, res: Response) => {
+// Get all API keys for user (no-auth version by email)
+app.get('/api/keys', async (req: Request, res: Response) => {
   try {
+    const email = req.query.email as string;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email parameter required' });
+    }
+
+    // Find or create user by email
+    let user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
     const keys = await prisma.apiKey.findMany({
       where: {
-        userId: req.userId!,
+        userId: user.id,
         isActive: true
       },
       orderBy: { createdAt: 'desc' }
     });
 
-    const user = req.user;
     const isPremium = user.paymentVerified || user.isTokenHolder;
 
     const keysWithTier = keys.map(key => ({
@@ -275,11 +292,30 @@ app.get('/api/keys', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // Get API key usage
-app.get('/api/keys/usage', authenticate, async (req: AuthRequest, res: Response) => {
+// Get usage stats (no-auth version by email)
+app.get('/api/keys/usage', async (req: Request, res: Response) => {
   try {
+    const email = req.query.email as string;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email parameter required' });
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
     const keys = await prisma.apiKey.findMany({
       where: {
-        userId: req.userId!,
+        userId: user.id,
         isActive: true
       }
     });

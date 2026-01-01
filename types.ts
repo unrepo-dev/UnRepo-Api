@@ -3,6 +3,7 @@
 export interface FileNode {
   path: string;
   type: 'file' | 'dir' | 'tree' | 'blob' | 'directory';
+  name?: string;
   size?: number;
   sha?: string;
   url?: string;
@@ -33,11 +34,11 @@ export interface GitHubContent {
 export interface RepositoryData {
   name: string;
   owner: string;
-  description: string | null;
+  fullName: string;
+  description?: string;
   stars: number;
   forks: number;
-  language: string | null;
+  language?: string;
   branch: string;
-  updatedAt: string;
   url: string;
 }

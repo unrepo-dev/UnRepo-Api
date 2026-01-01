@@ -150,7 +150,6 @@ router.post('/', async (req: Request, res: Response) => {
           forks: repoData.forks,
           language: repoData.language,
           branch: repoData.branch,
-          updatedAt: repoData.updatedAt,
         },
         languages,
         fileTree: Array.isArray(fileTree) ? fileTree.slice(0, 100) : [], // Limit to 100 files
