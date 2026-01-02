@@ -118,6 +118,8 @@ Content-Type: application/json
 }
 ```
 
+**API Key:** `unrepo_chatbot_[your_key]`
+
 **Rate Limits:** Free: 5 calls | Premium: 200/hour
 
 ---
@@ -137,6 +139,8 @@ Content-Type: application/json
   "repoUrl": "https://github.com/vercel/next.js"
 }
 ```
+
+**API Key:** `unrepo_research_[your_key]`
 
 **Rate Limits:** Free: 5 calls | Premium: 100/hour
 
@@ -213,19 +217,6 @@ function ChatBot() {
 ```
 
 ---
-
-## 🔧 Environment Variables
-
-```env
-PORT=4000
-FRONTEND_URL=http://localhost:3000
-DATABASE_URL=postgresql://...
-JWT_SECRET=your-secret
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GITHUB_TOKEN=ghp_...
-REDIS_URL=redis://...
-```
 
 ---
 
