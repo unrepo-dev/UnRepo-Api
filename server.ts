@@ -13,7 +13,14 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'you
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',       // Frontend development
+    'http://localhost:3001',       // Dashboard development
+    'https://unrepo.dev',          // Production frontend
+    'https://www.unrepo.dev',      // Production frontend (www)
+    'https://dashboard.unrepo.dev', // Production dashboard
+    process.env.FRONTEND_URL || 'http://localhost:3000'
+  ],
   credentials: true
 }));
 
