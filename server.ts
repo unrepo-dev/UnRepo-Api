@@ -185,40 +185,13 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
     // Get or create user by email (defaults to test user if no email provided)
     const userEmail = email || 'test@unrepo.dev';
     
-    // Parallel operations: find user and check existing key
-    const [existingUser, existingKeyForEmail] = await Promise.all([
-      prisma.user.findFirst({
-        where: { email: userEmail },
-        select: { id: true, email: true, name: true }
-      }),
-      prisma.apiKey.findFirst({
-        where: {
-          user: { email: userEmail },
-          type,
-          isActive: true,
-        },
-        select: {
-          key: true,
-          type: true,
-          name: true,
-          createdAt: true,
-          isActive: true,
-          usageCount: true
-        }
-      })
-    ]);
-
-    // Return existing key if found
-    if (existingKeyForEmail) {
-      return res.json({
-        success: true,
-        message: 'API key already exists',
-        data: existingKeyForEmail
-      });
-    }
+    // Find existing user
+    let user = await prisma.user.findFirst({
+      where: { email: userEmail },
+      select: { id: true, email: true, name: true }
+    });
 
     // Create user if doesn't exist
-    let user = existingUser;
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -232,7 +205,7 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate and save new API key
+    // Generate and save new API key (allow multiple keys per user)
     const apiKey = generateApiKey(type as 'RESEARCH' | 'CHATBOT');
 
     const newKey = await prisma.apiKey.create({
@@ -256,7 +229,10 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
     res.json({
       success: true,
       message: 'API key created successfully',
-      data: newKey
+      data: {
+        apiKey: newKey.key,
+        ...newKey
+      }
     });
   } catch (error) {
     console.error('API key generation error:', error);
