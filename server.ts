@@ -337,6 +337,46 @@ app.get('/api/keys/usage', async (req: Request, res: Response) => {
   }
 });
 
+// Delete API key
+app.delete('/api/keys/:keyId', async (req: Request, res: Response) => {
+  try {
+    const { keyId } = req.params;
+    const email = req.query.email as string;
+
+    if (!keyId) {
+      return res.status(400).json({ error: 'Key ID is required' });
+    }
+
+    // Find the key
+    const key = await prisma.apiKey.findUnique({
+      where: { id: keyId },
+      include: { user: true }
+    });
+
+    if (!key) {
+      return res.status(404).json({ error: 'API key not found' });
+    }
+
+    // If email provided, verify ownership
+    if (email && key.user.email !== email) {
+      return res.status(403).json({ error: 'Unauthorized to delete this key' });
+    }
+
+    // Delete the key
+    await prisma.apiKey.delete({
+      where: { id: keyId }
+    });
+
+    res.json({
+      success: true,
+      message: 'API key deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete key error:', error);
+    res.status(500).json({ error: 'Failed to delete API key' });
+  }
+});
+
 // Import API route handlers
 import chatbotRouter from './routes/chatbot.js';
 import researchRouter from './routes/research.js';
