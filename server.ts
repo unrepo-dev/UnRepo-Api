@@ -185,12 +185,41 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
     // Get or create user by email (defaults to test user if no email provided)
     const userEmail = email || 'test@unrepo.dev';
     
-    let user = await prisma.user.findFirst({
-      where: { email: userEmail }
-    });
+    // Parallel operations: find user and check existing key
+    const [existingUser, existingKeyForEmail] = await Promise.all([
+      prisma.user.findFirst({
+        where: { email: userEmail },
+        select: { id: true, email: true, name: true }
+      }),
+      prisma.apiKey.findFirst({
+        where: {
+          user: { email: userEmail },
+          type,
+          isActive: true,
+        },
+        select: {
+          key: true,
+          type: true,
+          name: true,
+          createdAt: true,
+          isActive: true,
+          usageCount: true
+        }
+      })
+    ]);
 
+    // Return existing key if found
+    if (existingKeyForEmail) {
+      return res.json({
+        success: true,
+        message: 'API key already exists',
+        data: existingKeyForEmail
+      });
+    }
+
+    // Create user if doesn't exist
+    let user = existingUser;
     if (!user) {
-      // Create new user if doesn't exist
       user = await prisma.user.create({
         data: {
           email: userEmail,
@@ -198,38 +227,14 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
           authMethod: 'GITHUB',
           githubId: `temp_${Date.now()}`,
           githubUsername: userEmail.split('@')[0],
-        }
+        },
+        select: { id: true, email: true, name: true }
       });
     }
 
-    // Check if user already has this type of API key
-    const existingKey = await prisma.apiKey.findFirst({
-      where: {
-        userId: user.id,
-        type,
-        isActive: true,
-      },
-    });
-
-    if (existingKey) {
-      return res.json({
-        success: true,
-        message: 'API key already exists',
-        data: {
-          apiKey: existingKey.key,
-          type: existingKey.type,
-          name: existingKey.name,
-          createdAt: existingKey.createdAt,
-          isActive: existingKey.isActive,
-          usageCount: existingKey.usageCount
-        }
-      });
-    }
-
-    // Generate new API key
+    // Generate and save new API key
     const apiKey = generateApiKey(type as 'RESEARCH' | 'CHATBOT');
 
-    // Save to database
     const newKey = await prisma.apiKey.create({
       data: {
         userId: user.id,
@@ -238,19 +243,20 @@ app.post('/api/keys/generate', async (req: Request, res: Response) => {
         name: name.trim(),
         isActive: true,
       },
+      select: {
+        key: true,
+        type: true,
+        name: true,
+        createdAt: true,
+        isActive: true,
+        usageCount: true
+      }
     });
 
     res.json({
       success: true,
       message: 'API key created successfully',
-      data: {
-        apiKey: newKey.key,
-        type: newKey.type,
-        name: newKey.name,
-        createdAt: newKey.createdAt,
-        isActive: newKey.isActive,
-        usageCount: newKey.usageCount
-      }
+      data: newKey
     });
   } catch (error) {
     console.error('API key generation error:', error);

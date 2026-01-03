@@ -220,7 +220,7 @@ Be concise, technical, and code-focused.`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-latest',
+      model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1024,
       system: systemPrompt,
       messages: messages.map((msg) => ({
@@ -237,7 +237,9 @@ Be concise, technical, and code-focused.`;
     throw new Error('Invalid response format from Claude');
   } catch (error) {
     console.error('Claude chat error:', error);
-    throw error;
+    // Fallback to OpenAI if Claude fails
+    console.log('Falling back to OpenAI...');
+    return chatWithChatGPT(messages, repoContext);
   }
 }
 
@@ -282,10 +284,10 @@ Provide comprehensive, strategic analysis. Be direct about risks and red flags.`
       temperature: 0.7,
     });
 
-    return response.choices[0]?.message?.content || 'No response generated';
+    return response.choices[0]?.message?.content || 'I apologize, but I couldn\'t generate a response.';
   } catch (error) {
     console.error('ChatGPT error:', error);
-    throw error;
+    return 'I apologize, but I couldn\'t generate a response. Please try again.';
   }
 }
 
