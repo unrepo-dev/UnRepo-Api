@@ -11,17 +11,30 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'your-secret-key';
 
+// Allowed origins for CORS
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://app.unrepo.dev',
+  'https://dashboard.unrepo.dev',
+  'https://www.unrepo.dev',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:3000',       // Frontend development
-    'http://localhost:3001',       // Dashboard development
-    'https://unrepo.dev',          // Production frontend
-    'https://www.unrepo.dev',      // Production frontend (www)
-    'https://dashboard.unrepo.dev', // Production dashboard
-    process.env.FRONTEND_URL || 'http://localhost:3000'
-  ],
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 }));
 
 app.use(express.json());
