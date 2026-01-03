@@ -14,8 +14,11 @@ const JWT_SECRET = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || 'you
 // Allowed origins for CORS
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:3002',
   'https://app.unrepo.dev',
   'https://dashboard.unrepo.dev',
+  'https://verify.unrepo.dev',
   'https://www.unrepo.dev',
   process.env.FRONTEND_URL
 ].filter(Boolean);
@@ -384,7 +387,7 @@ import walletRouter from './routes/wallet.js';
 
 app.use('/api/v1/chatbot', chatbotRouter);
 app.use('/api/v1/research', researchRouter);
-app.use('/api/wallet', walletRouter);
+app.use('/api/v1/wallet', walletRouter);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {

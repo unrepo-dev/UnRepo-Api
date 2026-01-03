@@ -196,6 +196,11 @@ model WalletUser {
   chatUsed        Int      @default(0)
   chatLimit       Int      @default(5)  // 5 free chats
   
+  // Token holder verification
+  isTokenHolder   Boolean  @default(false)
+  tokenBalance    Float?   // Current token balance
+  lastTokenCheck  DateTime? // When token balance was last verified
+  
   // Verification
   signatureHash   String?  // Stored signature for verification
   isVerified      Boolean  @default(false)

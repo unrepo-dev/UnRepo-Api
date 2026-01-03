@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import { verifyTokenHolder, getTokenThreshold, getTokenMint } from '../lib/helius.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -30,6 +31,8 @@ router.get('/check', async (req: Request, res: Response) => {
           chatUsed: walletUser.chatUsed,
           chatLimit: walletUser.chatLimit,
           isVerified: walletUser.isVerified,
+          isTokenHolder: walletUser.isTokenHolder,
+          tokenBalance: walletUser.tokenBalance,
         }
       });
     }
@@ -109,6 +112,24 @@ router.post('/register', async (req: Request, res: Response) => {
       }
     });
 
+    // Auto-check token balance for new registrations
+    try {
+      const tokenVerification = await verifyTokenHolder(walletAddress);
+      if (tokenVerification.isTokenHolder) {
+        await prisma.walletUser.update({
+          where: { walletAddress },
+          data: {
+            isTokenHolder: true,
+            tokenBalance: tokenVerification.tokenBalance,
+            lastTokenCheck: new Date(),
+          }
+        });
+        console.log(`🎉 New wallet ${walletAddress.slice(0, 8)}... is a token holder!`);
+      }
+    } catch (tokenError) {
+      console.log('Token verification skipped:', tokenError);
+    }
+
     return res.json({
       success: true,
       message: 'Wallet registered successfully! You get 1 free research and 5 free chats.',
@@ -147,21 +168,26 @@ router.post('/usage', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Wallet not registered' });
     }
 
-    // Check limits
-    if (type === 'research' && walletUser.researchUsed >= walletUser.researchLimit) {
-      return res.status(403).json({ 
-        error: 'Research limit reached',
-        used: walletUser.researchUsed,
-        limit: walletUser.researchLimit
-      });
-    }
+    // Token holders get unlimited access - skip limit checks
+    if (!walletUser.isTokenHolder) {
+      // Check limits for non-token holders
+      if (type === 'research' && walletUser.researchUsed >= walletUser.researchLimit) {
+        return res.status(403).json({ 
+          error: 'Research limit reached. Hold 1M+ $UNREPO tokens for unlimited access!',
+          used: walletUser.researchUsed,
+          limit: walletUser.researchLimit
+        });
+      }
 
-    if (type === 'chat' && walletUser.chatUsed >= walletUser.chatLimit) {
-      return res.status(403).json({ 
-        error: 'Chat limit reached',
-        used: walletUser.chatUsed,
-        limit: walletUser.chatLimit
-      });
+      if (type === 'chat' && walletUser.chatUsed >= walletUser.chatLimit) {
+        return res.status(403).json({ 
+          error: 'Chat limit reached. Hold 1M+ $UNREPO tokens for unlimited access!',
+          used: walletUser.chatUsed,
+          limit: walletUser.chatLimit
+        });
+      }
+    } else {
+      console.log(`🎉 Token holder ${walletAddress.slice(0, 8)}... using ${type} (unlimited access)`);
     }
 
     // Increment usage
@@ -230,6 +256,86 @@ router.get('/validate', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Wallet validation error:', error);
     return res.status(500).json({ error: 'Failed to validate wallet' });
+  }
+});
+
+// Verify token holdings for a wallet
+router.post('/verify-tokens', async (req: Request, res: Response) => {
+  try {
+    const { walletAddress } = req.body;
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: 'Wallet address is required'
+      });
+    }
+
+    console.log(`🔍 Token verification request for: ${walletAddress}`);
+
+    // Check token balance using Helius API
+    const verification = await verifyTokenHolder(walletAddress);
+
+    // Update wallet user if registered
+    const walletUser = await prisma.walletUser.findUnique({
+      where: { walletAddress }
+    });
+
+    if (walletUser) {
+      // Update token holder status in database
+      await prisma.walletUser.update({
+        where: { walletAddress },
+        data: {
+          isTokenHolder: verification.isTokenHolder,
+          tokenBalance: verification.tokenBalance,
+          lastTokenCheck: new Date(),
+        }
+      });
+      console.log(`✅ Updated wallet ${walletAddress.slice(0, 8)}... isTokenHolder: ${verification.isTokenHolder}`);
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        isTokenHolder: verification.isTokenHolder,
+        tokenBalance: verification.tokenBalance,
+        threshold: verification.threshold,
+        tokenMint: getTokenMint(),
+        message: verification.isTokenHolder 
+          ? 'Congratulations! You are a verified token holder with unlimited access.'
+          : `You need ${(verification.threshold - verification.tokenBalance).toLocaleString()} more tokens to unlock unlimited access.`
+      }
+    });
+  } catch (error: any) {
+    console.error('Token verification error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to verify token holdings'
+    });
+  }
+});
+
+// Get token verification info (public endpoint)
+router.get('/token-info', async (req: Request, res: Response) => {
+  try {
+    return res.json({
+      success: true,
+      data: {
+        tokenMint: getTokenMint(),
+        threshold: getTokenThreshold(),
+        decimals: 6,
+        symbol: 'UNREPO',
+        benefits: [
+          'Unlimited AI Chat',
+          'Unlimited Research Analysis',
+          'Priority Support',
+          'Early Access to New Features'
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Token info error:', error);
+    return res.status(500).json({ error: 'Failed to get token info' });
   }
 });
 
