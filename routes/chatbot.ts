@@ -62,25 +62,64 @@ async function verifyApiKey(apiKey: string) {
   return key;
 }
 
+// Verify wallet has chat access
+async function verifyWalletAccess(walletAddress: string) {
+  const walletUser = await prisma.walletUser.findUnique({
+    where: { walletAddress }
+  });
+
+  if (!walletUser) {
+    throw new Error('Wallet not registered. Please connect and register your wallet first.');
+  }
+
+  if (walletUser.chatUsed >= walletUser.chatLimit) {
+    throw new Error(`Chat limit reached (${walletUser.chatLimit} free chats). Please use an API key for more access.`);
+  }
+
+  // Increment usage
+  await prisma.walletUser.update({
+    where: { walletAddress },
+    data: {
+      chatUsed: { increment: 1 },
+      lastUsedAt: new Date(),
+    },
+  });
+
+  return walletUser;
+}
+
 // POST /api/v1/chatbot
 router.post('/', async (req: Request, res: Response) => {
   try {
     const apiKey = req.headers['x-api-key'] as string;
+    const walletAddress = req.headers['x-wallet-address'] as string;
     
     console.log('📨 Chatbot request received');
-    console.log('API Key:', apiKey?.substring(0, 20) + '...');
+    console.log('API Key:', apiKey ? apiKey.substring(0, 20) + '...' : 'NONE');
+    console.log('Wallet:', walletAddress || 'NONE');
     
-    if (!apiKey) {
+    if (!apiKey && !walletAddress) {
       return res.status(401).json({ 
         success: false,
-        error: 'API key is required in x-api-key header' 
+        error: 'API key or wallet address is required' 
       });
     }
 
-    // Verify API key
-    console.log('🔑 Verifying API key...');
-    const key = await verifyApiKey(apiKey);
-    console.log('✅ API key verified for user:', key.userId);
+    let userId: string | null = null;
+    let keyId: string | null = null;
+
+    // Verify API key OR wallet
+    if (apiKey) {
+      console.log('🔑 Verifying API key...');
+      const key = await verifyApiKey(apiKey);
+      console.log('✅ API key verified for user:', key.userId);
+      userId = key.userId;
+      keyId = key.id;
+    } else if (walletAddress) {
+      console.log('👛 Verifying wallet access...');
+      const wallet = await verifyWalletAccess(walletAddress);
+      console.log('✅ Wallet verified:', walletAddress, `(${wallet.chatUsed}/${wallet.chatLimit})`);
+    }
 
     // Get request body
     const { message, repoUrl, repoContext = {}, conversationHistory = [] } = req.body;
@@ -113,36 +152,38 @@ router.post('/', async (req: Request, res: Response) => {
     );
     console.log('✅ AI response received:', response?.substring(0, 100));
 
-    // Log API usage
-    await prisma.apiUsage.create({
-      data: {
-        userId: key.userId,
-        apiKeyId: key.id,
-        endpoint: '/api/v1/chatbot',
-        method: 'POST',
-        requestData: JSON.stringify({ message, repoUrl }),
-      },
-    });
+    // Log API usage (only if using API key)
+    if (userId && keyId) {
+      await prisma.apiUsage.create({
+        data: {
+          userId: userId,
+          apiKeyId: keyId,
+          endpoint: '/api/v1/chatbot',
+          method: 'POST',
+          requestData: JSON.stringify({ message, repoUrl }),
+        },
+      });
 
-    // Save chat messages
-    await prisma.chatMessage.createMany({
-      data: [
-        {
-          userId: key.userId,
-          sessionId: `api_${key.id}_${Date.now()}`,
-          role: 'user',
-          content: message,
-          repoContext: repoUrl,
-        },
-        {
-          userId: key.userId,
-          sessionId: `api_${key.id}_${Date.now()}`,
-          role: 'assistant',
-          content: response,
-          repoContext: repoUrl,
-        },
-      ],
-    });
+      // Save chat messages (only for API key users)
+      await prisma.chatMessage.createMany({
+        data: [
+          {
+            userId: userId,
+            sessionId: `api_${keyId}_${Date.now()}`,
+            role: 'user',
+            content: message,
+            repoContext: repoUrl,
+          },
+          {
+            userId: userId,
+            sessionId: `api_${keyId}_${Date.now()}`,
+            role: 'assistant',
+            content: response,
+            repoContext: repoUrl,
+          },
+        ],
+      });
+    }
 
     res.json({
       success: true,
@@ -152,17 +193,16 @@ router.post('/', async (req: Request, res: Response) => {
           ...messages,
           { role: 'assistant', content: response }
         ],
-        usage: {
-          count: key.usageCount + 1,
-          limit: key.user.paymentVerified || key.user.isTokenHolder ? null : 5
-        }
+        usage: walletAddress 
+          ? { type: 'wallet', remaining: 'check dashboard' }
+          : { count: 'check dashboard', limit: 5 }
       }
     });
   } catch (error: any) {
     console.error('❌ Chatbot API error:', error);
     console.error('Error stack:', error.stack);
     
-    if (error.message.includes('limit') || error.message.includes('Invalid')) {
+    if (error.message.includes('limit') || error.message.includes('Invalid') || error.message.includes('Wallet')) {
       return res.status(429).json({ 
         success: false,
         error: error.message 

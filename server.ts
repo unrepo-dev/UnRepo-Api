@@ -34,7 +34,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-wallet-address']
 }));
 
 app.use(express.json());
@@ -380,9 +380,11 @@ app.delete('/api/keys/:keyId', async (req: Request, res: Response) => {
 // Import API route handlers
 import chatbotRouter from './routes/chatbot.js';
 import researchRouter from './routes/research.js';
+import walletRouter from './routes/wallet.js';
 
 app.use('/api/v1/chatbot', chatbotRouter);
 app.use('/api/v1/research', researchRouter);
+app.use('/api/wallet', walletRouter);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
