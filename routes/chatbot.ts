@@ -72,12 +72,8 @@ async function verifyWalletAccess(walletAddress: string) {
     throw new Error('Wallet not registered. Please connect and register your wallet first.');
   }
 
-  // Check if user has remaining chats (5 chat limit per wallet)
-  if (walletUser.chatUsed >= walletUser.chatLimit) {
-    throw new Error(`Chat limit reached (${walletUser.chatLimit} free chats). Hold $UNREPO tokens for unlimited access or use an API key.`);
-  }
-
-  // Increment usage count
+  // Unlimited chats for wallet users - no limit check
+  // Just update last used time
   await prisma.walletUser.update({
     where: { walletAddress },
     data: {
