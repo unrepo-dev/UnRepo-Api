@@ -384,10 +384,12 @@ app.delete('/api/keys/:keyId', async (req: Request, res: Response) => {
 import chatbotRouter from './routes/chatbot.js';
 import researchRouter from './routes/research.js';
 import walletRouter from './routes/wallet.js';
+import analyzeRouter from './routes/analyze.js';
 
 app.use('/api/v1/chatbot', chatbotRouter);
 app.use('/api/v1/research', researchRouter);
 app.use('/api/v1/wallet', walletRouter);
+app.use('/api/v1', analyzeRouter);
 
 // Error handling middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
