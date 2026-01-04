@@ -39,7 +39,7 @@ export async function getTokenBalances(walletAddress: string): Promise<TokenBala
       throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
     }
 
-    const data: HeliusTokenResponse = await response.json();
+    const data = await response.json() as HeliusTokenResponse;
     return data.tokens || [];
   } catch (error) {
     console.error('Error fetching token balances:', error);
@@ -75,7 +75,7 @@ export async function getToken2022Balance(walletAddress: string, mintAddress: st
       })
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (data.error) {
       console.error('RPC Error:', data.error);

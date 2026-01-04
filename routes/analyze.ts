@@ -43,7 +43,7 @@ async function fetchRepoData(owner: string, repo: string) {
     let readme = '';
     try {
       const readmeResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, { headers });
-      const readmeData = await readmeResponse.json();
+      const readmeData = await readmeResponse.json() as any;
       if (readmeData.content) {
         readme = Buffer.from(readmeData.content, 'base64').toString('utf-8');
       }

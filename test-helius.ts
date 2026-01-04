@@ -30,7 +30,7 @@ async function testToken2022() {
       })
     });
     
-    const data = await response.json();
+    const data = await response.json() as any;
     
     console.log('=== RPC Response ===');
     console.log(JSON.stringify(data, null, 2));
@@ -86,7 +86,7 @@ async function testHelius() {
       })
     });
     
-    const rpcData = await rpcResponse.json();
+    const rpcData = await rpcResponse.json() as any;
     console.log('RPC Response:', JSON.stringify(rpcData, null, 2));
     
     if (rpcData.result?.value?.length > 0) {
@@ -109,7 +109,7 @@ async function testHelius() {
   
   try {
     const response = await fetch(balanceUrl);
-    const data = await response.json();
+    const data = await response.json() as any;
     
     console.log('Balance Response:', JSON.stringify(data, null, 2));
     
